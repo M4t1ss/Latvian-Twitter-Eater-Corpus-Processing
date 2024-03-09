@@ -1,0 +1,307 @@
+import asyncio
+from twscrape import API, gather
+from twscrape.logger import set_log_level
+import mysql.connector as mysql
+import sys,json
+from datetime import datetime, timedelta
+
+print('Connecting to the database...')
+
+db = mysql.connect(user='', password='',host='',database='', port='')
+cursor = db.cursor(buffered=True)
+
+print('Connected to the database!\n')
+
+valid_food = ['garšot','garšoju','garšošu','garšo','garšoji','garšosi','garšoja','garšos','garšojot','garšotu','jāgaršo','nogaršot',
+            'nogaršoju','nogaršošu','nogaršo','nogaršoji','nogaršosi','nogaršoja','nogaršos','nogaršojam','nogaršojām','nogaršosim',
+            'nogaršojat','nogaršojāt','nogaršojot','nogaršotu','pagaršot','pagaršoju','pagaršošu','pagaršo','pagaršoji','pagaršosi',
+            'pagaršoja','pagaršos','pagaršojam','pagaršojām','pagaršosim','pagaršojat','pagaršojāt','pagaršojot','pagaršotu','ēdu',
+            'ēdīšu','ēd','ēdi','ēdīsi','ēda','ēdīs','ēdam','ēdām','ēdīsim','ēdat','ēdāt','ēdīsiet','ēd','ēdot','ēdīšot','ēstu','jāēd',
+            'apēst','apēdu','apēdīšu','apēd','apēdi','apēdīsi','apēda','apēdīs','apēdam','apēdām','apēdīsim','apēdat','apēdāt','apēdīsiet',
+            'apēd','apēdot','apēdīšot','apēstu','atēst','atēdu','atēd','atēd','ieēst','ieēdu','ieēdīšu','ieēd','ieēdi','ieēdīsi','ieēda',
+            'ieēdīs','ieēdam','ieēdām','ieēdīsim','ieēd','ieēdot','ieēstu','izēst','izēdu','izēdīšu','izēd','izēdi','izēdīsi','izēda',
+            'izēdīs','izēdam','izēdām','izēdīsim','izēdat','izēdāt','izēdīsiet','izēd','izēstu','neēst','neēdu','neēdīšu','neēdi',
+            'neēdīsi','neēda','neēdīs','neēdam','neēdām','neēdīsim','neēdat','neēdāt','neēd','neēdot','neēdīšot','neēstu','noēst','noēdu',
+            'noēdīšu','noēd','noēdi','noēdīsi','noēda','noēdīs','noēdam','noēdām','noēdīsim','noēd','noēdot','noēstu','paēst','paēdu',
+            'paēdīšu','paēd','paēdi','paēdīsi','paēda','paēdīs','paēdam','paēdām','paēdīsim','paēdat','paēdāt','paēd','paēdot','paēstu',
+            'uzēst','uzēdu','uzēdīšu','uzēd','uzēdi','uzēdīsi','uzēda','uzēdīs','uzēdam','uzēdām','uzēdīsim','uzēdat','uzēdāt','uzēdīsiet',
+            'uzēd','uzēdot','uzēstu','saēsties','saēdos','saēdīšos','saēdies','saēdīsies','saēdas','saēdās','saēdīsies','saēdamies',
+            'saēdāmies','saēdīsimies','saēdaties','saēdāties','saēdoties','saēstos','jāsaēdas','pārēsties','pārēdos','pārēdīšos','pārēdies',
+            'pārēdīsies','pārēdas','pārēdās','pārēdīsies','pārēdamies','pārēdāmies','pārēdīsimies','pārēdoties','pārēstos','pieēsties',
+            'pieēdos','pieēdīšos','pieēdies','pieēdīsies','pieēdas','pieēdās','pieēdīsies','pieēdamies','pieēdāmies','pieēdīsimies',
+            'pieēdoties','pieēstos','brokastot','brokastoju','brokastošu','brokasto','brokastoji','brokastosi','brokastoja','brokastos',
+            'brokastojam','brokastojām','brokastosim','brokastojat','brokastojāt','brokastojot','jābrokasto','pusdienot','pusdienoju',
+            'pusdienošu','pusdieno','pusdienoji','pusdienosi','pusdienoja','pusdienos','pusdienojam','pusdienojām','pusdienosim',
+            'pusdienojat','pusdienojāt','pusdienojot','pusdienotu','jāpusdieno','vakariņot','vakariņoju','vakariņošu','vakariņo',
+            'vakariņoji','vakariņosi','vakariņoja','vakariņos','vakariņojam','vakariņojām','vakariņosim','vakariņojot','iekožu',
+            'iekodīšu','iekodīsi','iekož','iekoda','iekodīs','iekožam','iekodām','iekodīsim','iekožot','iekostu','jāiekož','uzkožu',
+            'uzkodu','uzkodīšu','uzkodīsi','uzkož','uzkodīs','uzkožam','uzkodām','uzkodīsim','uzkožat','maltīte','garšīgs','garšīga',
+            'kārums','ņam','ņamma','apetīte','ēdiens','brokastis','pusdienas','vakariņas','brokastīs','pusdienās','vakariņās','launagā',
+            'ēst','ēdis','ēdusi','notiesāju','notiesāšu','notiesāt','mandarīnus','saldējumu','tēju','pankūkas','šokolādi','šokolādes',
+            'kūku','čipšus','kafija','tēja','gaļu','končās','pelmeņus','piparkūkas','maizītes','mērci','ābolu','gaļas','kartupeļu',
+            'šokolāde','salātus','saldumus','hesītī','mandarīnu','kūkas','kartupeļus','mērce','tomātu','mandarīni','pelmeņi','Apelsīnu',
+            'Dārzeņu','salāti','saldējuma','Saldējums','kartupeļiem','tējas','maķītī','krēmzupa','Kārums','bulciņas','salātiem','zemeņu',
+            'piparkūku','maizīti','tējiņu','kūciņu','kāpostu','čipsi','sīpolu','vīnogas','krējumu','biešu','burkānu','rīsiem','dārzeņiem',
+            'sēnes','degustēju','degustēt','degustēšu','griķi','griķus','griķiem','griķu','griķos','rīsi','rīsus','rīšu','pierīties',
+            'pusdienās','brokastīs','vakariņās','garšīgi','kafiju','ēdienu','dzēriens','garšīgas','mērcē','paēstas','zemenes','paēdām',
+            'cūkgaļas','kafijas','ēdis','apetīti','garšu','kotletes','negaršo','garšīgu','biezpiena','končas','sēņu','ēdām','banānu',
+            'konfektes','čipsus','jāpaēd','karbonāde','tomātiem','salātu','sautējums','suši','biezpienu','pīrāgs','garša','krējuma',
+            'brokastu','garšas','ēdiena','pusdienām','ķirbju','karameļu','zirņu','skābeņu','vaniļas','zemenēm','ķiršu','gurķi','dārzeņi',
+            'aveņu','ievārījumu','putukrējumu','ēdieni','pārtiku','gurķu','ķiploku','ēšanas','ābolus','augļiem','arbūzu','laša','kefīrs',
+            'tomāti','ēdienus','cūkgaļa','banānus','banāni','vakariņām','dārzeņus','brokastīm','augļus','dzeršu','cūkgaļu','pankūku',
+            'majonēzi','olām','upeņu','karbonādes','kabaču','apēdām','jāiedzer','sīpoliem','kūciņas','āboliem','pankūkām','paēdis',
+            'mērcīti','āboli','biezzupa','biezpiens','spinātu','karbonādi','pupiņas','grauzdiņiem','melleņu','ēdieniem','pupiņām',
+            'gardās','ābols','burkānus','ķīseli','burkāniem','gulašs','kāpostiem','tomātus','jāizdzer','kumelīšu','plācenīši','šķiņķi',
+            'gurķiem','banāniem','gurķus','dzērveņu','tostermaizes','zupiņa','šašliku','tītara','ķiršus','cīsiņus','bulciņu','burkāni',
+            'aliņu','gaileņu','šampinjonu','krējums','pankūciņas','aliņš','cāļa','tīteņi','ēšana','ribiņas','mērces','zupiņu','borščs',
+            'brokastiņas','kāposti','sieriņu','šņabi','siļķi','ogām','garšīgās','garšīgo','ananāsu','pieēdāmies','ievārījums','speķi',
+            'sīrupu','kukurūzu','ēdienreizes','maizīte','pīrādziņi','pīrāgu','nūdeles','saldējumus','jāpadzer','pīrādziņus','vistiņu',
+            'sīpolus','banāns','kefīru','sīpoli','zirņi','salātiņiem','kāpostus','sautējumu','tunča','zirņus','šampinjoniem','šprotes',
+            'pārēdusies','desiņas','zirnīšu','garšīgus','spinātiem','tomāts','cepumiņus','garnelēm','pelmeņiem','šņabis','izdzeršu',
+            'ķiplokus','čipsu','kukurūzas','pustdienas','mandeļu','salātiņi','rozīnēm','šokolādē','mandarīniem','dzērvenes','salātiņus',
+            'cīsiņi','graužu','apelsīnus','apēstas','rupjmaizes','pīrāgus','ananāsiem','apēdis','siļķe','ķirbi','majonēze','vakariņu',
+            'gardā','rozīnes','ēdams','konfekšu','sviestmaizes','vistiņas','rupjmaizi','tējiņa','čipsiem','maizītēm','ēdienreize',
+            'biezputru','kefīra','apēsts','zirnīšiem','garšīgāks','padzeršu','vafeļu','sieriņš','tefteļi','mērcīte','pīrāgi','pelmeņu',
+            'ķirši','uzēdām','desmaizes','gurķīšus','negaršoja','virtuļus','krēmzupu','kotletēm','kabači','olīvas','šnicele','karstvīns',
+            'zupā','salātos','kūkām','brūkleņu','šķiņķīši','sviestmaizi','cepumiņi','sieriņus','šampanietis','diļļu','ķiploki','dzērienu',
+            'konfektēm','pankūka','burkāns','garneļu','pārslām','plūmes','greipfrūtu','ēdienam','ķīselis','lašmaizītes','rupjmaize',
+            'siermaizītes','avenēm','piparkūkām','grauzdiņus','siermaizes','pabarot','ēšanu','pieēdies','čipši','soļanku','ēdienkartē',
+            'koņčas','nūdelēm','apēdusi','kūciņa','majonēzes','mellenēm','vistiņa','ķiršiem','augļi','riekstiņus','apelsīni','kartupelīši']
+
+spammers = ['berelilah_jpg', 'Twitediens', 'dievietelv', 'CrabstickFusion']
+
+def clean_text(text):
+
+    text = text.replace("\n", " ")
+    text = text.replace("\t", " ")
+    text = text.replace("<br>", " ")
+    text = text.replace("</br>", " ")
+    text = text.replace("-", " ")
+    text = text.replace(",", " ")
+    text = text.replace(";", " ")
+    text = text.replace(":", " ")
+    text = text.replace(".", " ")
+    text = text.replace("/", " ")
+    text = text.replace("]", " ")
+    text = text.replace("[", " ")
+    text = text.replace(")", " ")
+    text = text.replace("(", " ")
+    text = text.replace("!", " ")
+    text = text.replace("?", " ")
+    text = text.replace("'", " ")
+    text = text.replace('"', ' ')
+    text = text.replace('#', " ")
+    text = text.replace("  ", " ")
+
+    return text
+
+def trashy_count(text):
+    badChars = ["𝓪","𝞪","ă","å","𝛼","𝐚","à","á","ä","Æ","æ","ǣ","α","𝗮","𝜶","ａ","𝒂","â","𝘢","𝗔","ȃ","Ã","ã",
+                "Ƅ",
+                "ď","𝗱","𝖣","𝓭","𝒅","𝐝","𝗗",
+                "ę","Ę","ȩ","𝐞","𝗲","𝑒","ｅ","ȅ","ҽ","ë","𝙚","𝘦","ě","ê","𝔢","é","ĕ","è","𝗘","𝒆",
+                "𝖿","𝒇","𝘧","𝗳","ẝ","𝑓",
+                "ġ","ǧ",
+                "𝐡","𝙝","𝔥","ħ",
+                "Ĩ","Ȉ","İ","Ĭ","Į","𝚤","ꭵ","î","Î","𝖎","ǐ","į","í","Ï","ı",
+                "𝙠","𝒌","𝐤","𝗸",
+                "ȯ","ò","ō","ȫ","𝝾","𝗼","𝞸","𝐨","õ","ȭ","ó","ø","ö","Ø","𝙤","ǒ","၀","𝘰","𝒐","𝗈","Ô","ð",
+                "ŀ","𐌠",
+                "ᗰ","𝗺",
+                "ŉ","𝖓","𝐧","𝗻","ñ","ǹ","𝘯","𝗇","ń","𝑛",
+                "𝛒","𝗣","𝗽",
+                "𝐫","𝔯","𝗿",
+                "𝘁","ŧ","ț","𝖙","𝒕","𝗧",
+                "𝘀","ŝ","𝑠","𝒔","ƽ","ś","ș","𝓈",
+                "ȗ","ǖ","ǜ","ȕ","ű","𝙪","𝞄","û","ú","ü","ų","ŭ","ǘ","𝗨","𝛖","Ù",
+                "𝒘","𝓦","ѡ","𝘄","Ŵ","𝙬","𝗪",
+                "𝔁","𝘹",
+                "ÿ","ч","𝛾","ȳ","ŷ","𝒚",
+                "ß",
+                "𓈊","𓋲",
+                "ء","،","خ","ا","ف","ث","ً","،","ش","ر","ض","و","م","ق","ع","ز","ة","،","إ","س","ئ","ل","ك","ن","ي","أ","ح","ب","ت","ه"]
+    trashy = 0
+    for char in badChars:
+        if char in text:
+            trashy+=1
+
+    return trashy
+
+def  remove_mentions(text):
+    # Count of all mentions
+    atcount = text.count("@")
+    # Position of last mention
+    if atcount > 0:
+        position = text.rindex("@")
+        # Trim if more than 10 mentions...
+        if atcount > 10 or len(text) > 450:
+            text = text[position:]
+    return text
+
+def add_tweet(id, text, screen_name, created_at, geo, quoted = None):
+    if quoted == None:
+        sql = "INSERT IGNORE INTO tweets (id ,text ,screen_name, created_at, geo) VALUES (%s, %s, %s, %s, %s)"
+        val = (id, text, screen_name, created_at, geo)
+    else:
+        sql = "INSERT IGNORE INTO tweets (id ,text ,screen_name, created_at, geo, quoted_id) VALUES (%s, %s, %s, %s, %s, %s)"
+        val = (id, text, screen_name, created_at, geo, quoted)
+    cursor.execute(sql, val)
+
+def add_word(vards, nominativs, tvits, grupa, eng, datums):
+    sql = "INSERT IGNORE INTO words (vards, nominativs, tvits, grupa, eng, datums) VALUES (%s, %s, %s, %s, %s, %s)"
+    val = (vards, nominativs, tvits, grupa, eng, datums)
+    cursor.execute(sql, val)
+
+def add_media(tweet_id, media_url, date):
+    sql = "INSERT IGNORE INTO media (tweet_id, media_url, date) VALUES (%s, %s, %s)"
+    val = (tweet_id, media_url, date)
+    cursor.execute(sql, val)
+    # print('Media added?\n')
+
+def add_mention(screen_name, tweet_id, mention, date):
+    sql = "INSERT IGNORE INTO mentions (screen_name, tweet_id, mention, date) VALUES (%s, %s, %s, %s)"
+    val = (screen_name, tweet_id, mention, date)
+    cursor.execute(sql, val)
+
+def save_tweet(tweet):
+
+    #Format the date
+    tweetDate = tweet['date']
+
+    if str(tweetDate)[-6:] == '+00:00':
+        DBformat = "%Y-%m-%d %H:%M:%S"
+        real_time = tweetDate + timedelta(hours=2)
+        LVdate = format(real_time, DBformat)
+
+    if tweet['user']['username'] not in spammers:
+        # Maybe insert in DB from here
+        quoted_id = None
+        if tweet['quotedTweet'] is not None:
+            # Insert if does not exist yet
+            select = "SELECT id FROM tweets where id = %s"
+            value = (quoted_id,)
+            cursor.execute(select, value)
+
+            if cursor.rowcount == 0:
+                saved_quote = save_tweet(tweet['quotedTweet'])
+                if saved_quote:
+                    quoted_id = tweet['quotedTweet']['id']
+
+        # attīra
+        tweet_text = tweet['rawContent']
+        ntext = clean_text(tweet_text);
+        tc = trashy_count(tweet_text);
+        edieni = 0;
+
+        if len(ntext)>0:
+            vardi = ntext.split()
+            edienVardi = []
+            RLYsave = False
+            for vards in vardi:
+
+                vards = vards.replace("  ", "")
+                vards = vards.replace(" ", "")
+                vards = vards.replace("-", "")
+                vards = vards.replace("'", "")
+                vards = vards.replace('"', '')
+
+                if len(vards) > 2 and vards[0:4]!='http' and not any(char.isdigit() for char in vards) and not any(substring in vards for substring in ['@','#','\n','\r']):
+                    edienVardi.append(vards)
+                    if vards in valid_food:
+                        RLYsave = True
+
+            # Skip saving at this point if no food words actually found in the text
+            if not RLYsave:
+                return False
+
+            myset = set(edienVardi)
+            edienVardi = list(myset)
+
+            for edienvards in edienVardi:
+
+                select = "SELECT nominativs, grupa, eng FROM words WHERE tvits != %s AND LOWER(CAST(vards AS CHAR CHARACTER SET utf8)) = LOWER(CAST(%s AS CHAR CHARACTER SET utf8)) LIMIT 1"
+                value = (tweet['id'], edienvards)
+                cursor.execute(select, value)
+
+                if cursor.rowcount > 0:
+                    results = cursor.fetchall()
+                    nom = results[0][0]
+                    gru = results[0][1]
+                    eng = results[0][2]
+
+                    edieni+=1
+
+                    add_word(edienvards, nom, tweet['id'], gru, eng, LVdate)
+
+            retweet = tweet_text[0:4] == "RT @";
+
+            if RLYsave and not retweet and (edieni > 0 or tweet_text[0]=="@" or tc < 3):
+
+                insert_text = remove_mentions(tweet_text)
+
+                if tweet['place'] is not None:
+                    if tweet['place']['name'] is not None:
+                        geo = tweet['place']['name']
+                else:
+                    geo = None
+
+                add_tweet(tweet['id'], insert_text, tweet['user']['username'], LVdate, geo, quoted_id)
+
+                for photo in tweet['media']['photos']:
+                    add_media(tweet['id'], photo['url'], LVdate)
+                for user in tweet['mentionedUsers']:
+                    add_mention(tweet['user']['username'], tweet['id'], user['username'], LVdate)
+
+                db.commit()
+                return True
+
+
+async def main():
+    api = API()  # or API("path-to.db") - default is `accounts.db`
+
+    await api.pool.add_account("","","", "_")
+    await api.pool.add_account("","","", "_")
+    await api.pool.add_account("","","", "_")
+    await api.pool.add_account("","","", "_")
+    await api.pool.add_account("","","", "_")
+    await api.pool.add_account("","","", "_")
+    await api.pool.add_account("","","", "_")
+    await api.pool.login_all()
+
+    set_log_level("DEBUG")
+
+    # Tweet & User model can be converted to regular dict or json, e.g.:
+    keywords = ["ēdu", "ēd", "ēdam", "ēst", "paēst", "garšo", "pusdieno", "vakariņo", "brokasto", "pusdienas", "vakariņas", "brokastis", "šokolāde", "gaļa",
+                "ēdiens", "kartupeļu", "pankūka", "salāti", "saldējumu", "ābolu", "kūku", "ņam", "saldējums", "tomātu", "mērci", "garšīgs", "dārzeņu", "ēdīšu"]
+    keywordstring = ' OR '.join(keywords)
+
+    if(len(sys.argv) > 1):
+        k_from  = sys.argv[1] # "2024-01-01"
+        k_to    = sys.argv[2] # "2024-01-27" 
+    else:
+        yesterday = datetime.now() - timedelta(1)
+        today = datetime.now()
+
+        k_from = datetime.strftime(yesterday, '%Y-%m-%d')
+        k_to = datetime.strftime(today, '%Y-%m-%d')
+    # Maybe needs day+1 to get tweets from the day
+
+    print("Searching for tweets between "+ k_from + " and " + k_to)
+
+    # doc = await gather(api.search("ēdu OR ēd OR garšo OR pusdieno OR vakariņo OR brokasto OR pusdienas OR vakariņas OR brokastis lang:lv -filter:nativeretweets within_time:14d", limit=1000, kv={"product": "Latest"}))
+    doc = await gather(api.search(keywordstring+" lang:lv -filter:nativeretweets since:"+k_from+" until:"+k_to, limit=3000, kv={"product": "Latest"}))
+    
+
+
+    for entry in doc:
+        tweet = entry.dict()
+        select = "SELECT id FROM tweets where id = %s"
+        value = (tweet['id'],)
+        cursor.execute(select, value)
+
+        if cursor.rowcount == 0:
+            save_tweet(tweet)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
